@@ -10,12 +10,19 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const upload = multer({ dest: 'uploads/' });
 const PORT = process.env.PORT || 7860;
-const TASKS_FILE = path.join(__dirname, 'database_mention_v4.json');
+const TASKS_FILE = path.join(__dirname, 'database_v5.json');
 
 let nameCache = new Map();
 let activeEngines = new Map();
 
-const EMOJIS = ["🔥","💥","⚡","🧿","👑","💀","🔫","⚔️","🦅","🦁"];
+// Modern Mobile User Agents (Important for 15-digit IDs)
+const AGENTS = [
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.6312.40 Mobile Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 13; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36"
+];
+
+const EMOJIS = ["🔥","⚡","👑","💀","🔫","🦅","🦁"];
 
 function saveToDB(t) { try { fs.writeFileSync(TASKS_FILE, JSON.stringify(t, null, 2)); } catch(e){} }
 function loadFromDB() {
@@ -33,7 +40,7 @@ class Messenger {
     
     async send(msg, tid, mentionUID) {
         const active = this.sessions.filter(s => s.ok);
-        if(!active.length) return { success: false, reason: "No Active Sessions" };
+        if(!active.length) return { success: false, reason: "No Sessions" };
         const s = active[this.idx % active.length];
         this.idx++;
 
@@ -43,30 +50,32 @@ class Messenger {
                 let name = nameCache.get(mUID);
 
                 if (!name) {
-                    await new Promise(resolve => {
+                    await new Promise(r => {
                         s.api.getUserInfo(mUID, (err, ret) => {
-                            if(!err && ret && ret[mUID]) {
-                                name = ret[mUID].name;
-                                nameCache.set(mUID, name);
-                            } else { name = "Target User"; }
-                            resolve();
+                            name = (!err && ret[mUID]) ? ret[mUID].name : "Target";
+                            nameCache.set(mUID, name);
+                            r();
                         });
                     });
                 }
 
-                const finalMessage = `${name} ${msg} ${EMOJIS[Math.floor(Math.random() * EMOJIS.length)]}`;
+                // 15-Digit Fix: Using random space to bypass FB filter
+                const invisibleChar = "‎"; 
+                const finalMessage = `${name}${invisibleChar} ${msg} ${EMOJIS[Math.floor(Math.random() * EMOJIS.length)]}`;
                 const mentionData = [{ tag: name, id: mUID, fromIndex: 0, length: name.length }];
 
                 s.api.sendMessage({ body: finalMessage, mentions: mentionData }, tid, (err, info) => {
                     if(err) {
-                        // Fallback logic
-                        s.api.sendMessage(`${name} ${msg}`, tid, (e2) => {}, 1);
-                        res({ success: true, name: "Text-Only Tag" });
+                        // Hard Fallback: Force Plain Text if Mention is blocked
+                        s.api.sendMessage(`${name} : ${msg}`, tid, (e2) => {
+                            if(e2) res({ success: false, reason: "Account Shadow-Banned" });
+                            else res({ success: true, name: "Plain Text Sent" });
+                        }, 1);
                     } else {
                         res({ success: true, name });
                     }
                 }, 1); 
-            } catch (e) { res({ success: false, reason: e.message }); }
+            } catch (e) { res({ success: false, reason: "System Error" }); }
         });
     }
 }
@@ -81,22 +90,19 @@ async function startLoop(token) {
     const msgs = (task.msgs || "").split('\n').filter(Boolean);
     const uids = (task.haters || "").split(',').filter(Boolean);
 
-    if(msgs.length === 0 || uids.length === 0) {
-        engine.log("⚠️ Error: Messages or Target UIDs missing!");
-        return;
-    }
+    if(!msgs.length || !uids.length) return engine.log("⚠️ Missing Msgs/UIDs");
 
     const m = msgs[Math.floor(Math.random() * msgs.length)].trim();
     const targetUID = uids[Math.floor(Math.random() * uids.length)].trim();
 
-    engine.log(`🚀 Attempting to tag ${targetUID}...`);
+    engine.log(`🚀 Sending to ${targetUID}...`);
     const result = await engine.send(m, task.tid, targetUID);
     
     if(result.success) engine.log(`✔️ Done: ${result.name}`);
     else engine.log(`❌ Fail: ${result.reason}`);
 
-    const baseDelay = (parseInt(task.delay) || 15) * 1000;
-    setTimeout(() => { if(activeEngines.has(token)) startLoop(token); }, baseDelay);
+    const baseDelay = (parseInt(task.delay) || 20) * 1000;
+    setTimeout(() => { if(activeEngines.has(token)) startLoop(token); }, baseDelay + Math.floor(Math.random() * 3000));
 }
 
 async function initTask(ws, d) {
@@ -115,11 +121,12 @@ async function initTask(ws, d) {
             try {
                 let ck = cookies[i].trim();
                 let loginData = (ck.startsWith('[') && ck.endsWith(']')) ? {appState: JSON.parse(ck)} : ck;
-                wiegine.login(loginData, {logLevel:'silent', forceLogin: true}, (err, api) => {
+                const agent = AGENTS[Math.floor(Math.random() * AGENTS.length)];
+                wiegine.login(loginData, {logLevel:'silent', forceLogin: true, userAgent: agent}, (err, api) => {
                     if(!err && api) {
                         api.setOptions({listenEvents: false, selfListen: false, autoMarkRead: true});
                         engine.sessions.push({api, ok:true});
-                        engine.log(`✔️ Session ${i+1} Ready`);
+                        engine.log(`✔️ Session ${i+1} Active`);
                     } r();
                 });
             } catch(e){ r(); }
@@ -128,6 +135,7 @@ async function initTask(ws, d) {
     if(engine.sessions.length > 0) startLoop(token);
 }
 
+// Minimal Frontend for Mobile
 app.post('/upload-msg', upload.single('f'), (req, res) => {
     if(!req.file) return res.send({m:''});
     res.send({m: fs.readFileSync(req.file.path, 'utf-8')});
@@ -135,7 +143,7 @@ app.post('/upload-msg', upload.single('f'), (req, res) => {
 });
 
 app.get('/', (req,res) => {
-    res.send(`<!DOCTYPE html><html><head><title>SARDAR RDX v4</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#00ffff;font-family:monospace;padding:10px;text-align:center}.box{max-width:400px;margin:auto;border:1px solid #00ffff;padding:20px;background:#050505;border-radius:8px;box-shadow:0 0 10px #004444}input,textarea{width:92%;margin:10px 0;padding:10px;background:#000;border:1px solid #004444;color:#fff}button{width:100%;padding:12px;background:#00ffff;color:#000;border:none;cursor:pointer;font-weight:bold;margin-top:10px}#log{height:180px;overflow-y:auto;background:#000;margin-top:15px;padding:8px;font-size:11px;text-align:left;color:#0f0;border:1px solid #004444}</style></head><body><div class="box"><h3>◈ SARDAR RDX GROUP ◈</h3><input id="t" placeholder="Target Group UID"><input id="d" type="number" placeholder="Delay (15-20 sec recommended)"><input id="h" placeholder="Target User UIDs (comma separated)"><div style="border:1px dashed #004444;padding:10px;margin:10px 0"><small>Upload Message.txt</small><br><input type="file" id="fi" style="width:100%"></div><textarea id="c" rows="4" placeholder="Paste Cookies List"></textarea><button onclick="st()">START ATTACK</button><hr style="border:0.1px solid #004444;margin:20px 0"><input id="sk" placeholder="Enter Token to Stop"><button onclick="sp()" style="background:#ff3333;color:#fff">TERMINATE PROCESS</button><div id="log">Ready for action...</div></div><script>let ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');ws.onmessage = e => { let d = JSON.parse(e.data); if(d.type==='log'){ let l=document.getElementById('log'); l.innerHTML+='<div>'+d.message+'</div>'; l.scrollTop=l.scrollHeight; } if(d.type==='token') alert('SAVE YOUR TOKEN: ' + d.token); };async function up(){let f=document.getElementById('fi').files[0];if(!f)return null;let fd=new FormData();fd.append('f',f);let r=await fetch('/upload-msg',{method:'POST',body:fd});let j=await r.json();return j.m;}async function st(){let msgs=await up();if(!msgs){alert('Select Message File!');return;}ws.send(JSON.stringify({type:'start',tid:document.getElementById('t').value,delay:document.getElementById('d').value,haters:document.getElementById('h').value,msgs:msgs,cookies:document.getElementById('c').value}));}function sp(){ let tk=document.getElementById('sk').value; if(!tk){alert('Enter Token!');return;} ws.send(JSON.stringify({type:'stop', token:tk})); }</script></body></html>`);
+    res.send(`<!DOCTYPE html><html><head><title>SARDAR RDX v5</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{background:#000;color:#0ff;font-family:monospace;padding:10px;text-align:center}.box{max-width:400px;margin:auto;border:1px solid #0ff;padding:15px;background:#050505;border-radius:8px}input,textarea{width:90%;margin:8px 0;padding:10px;background:#000;border:1px solid #044;color:#fff}button{width:100%;padding:12px;background:#0ff;color:#000;border:none;font-weight:bold;margin-top:10px}#log{height:200px;overflow-y:auto;background:#000;margin-top:15px;padding:8px;font-size:11px;text-align:left;color:#0f0;border:1px solid #044}</style></head><body><div class="box"><h3>◈ RDX GROUP BOT v5 ◈</h3><input id="t" placeholder="Group UID"><input id="d" type="number" placeholder="Delay (20 sec min)"><input id="h" placeholder="Target UIDs"><div style="border:1px dashed #044;padding:8px;margin:8px 0"><input type="file" id="fi" style="width:100%"></div><textarea id="c" rows="4" placeholder="Cookies"></textarea><button onclick="st()">START</button><hr style="border:0.5px solid #044;margin:15px 0"><input id="sk" placeholder="Token to Stop"><button onclick="sp()" style="background:#f33;color:#fff">STOP</button><div id="log">Logs...</div></div><script>let ws = new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/ws');ws.onmessage = e => { let d = JSON.parse(e.data); if(d.type==='log'){ let l=document.getElementById('log'); l.innerHTML+='<div>'+d.message+'</div>'; l.scrollTop=l.scrollHeight; } if(d.type==='token') alert('TOKEN: ' + d.token); };async function up(){let f=document.getElementById('fi').files[0];if(!f)return null;let fd=new FormData();fd.append('f',f);let r=await fetch('/upload-msg',{method:'POST',body:fd});let j=await r.json();return j.m;}async function st(){let msgs=await up();ws.send(JSON.stringify({type:'start',tid:document.getElementById('t').value,delay:document.getElementById('d').value,haters:document.getElementById('h').value,msgs:msgs,cookies:document.getElementById('c').value}));}function sp(){ws.send(JSON.stringify({type:'stop',token:document.getElementById('sk').value}));}</script></body></html>`);
 });
 
 const server = app.listen(PORT, () => {
@@ -151,7 +159,6 @@ wss.on('connection', ws => {
             if(d.type==='stop') {
                 activeEngines.delete(d.token);
                 saveToDB(loadFromDB().filter(t => t.token !== d.token));
-                ws.send(JSON.stringify({type:'log', message:'🔴 Attack Terminated'}));
             }
         } catch(e){}
     });
