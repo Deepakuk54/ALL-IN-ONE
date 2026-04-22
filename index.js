@@ -7,7 +7,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
+let activeLocks = new Map();
 const DB_FILE = 'drb_master_db.json';
+
 if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, JSON.stringify({ locks: [] }));
 
 const htmlContent = `
@@ -16,267 +18,147 @@ const htmlContent = `
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DEEPAK RAJPUT BRAND | MASTER V3</title>
+    <title>DRB MASTER V4 | PRO EDITION</title>
     <style>
-        :root {
-            --bg: #0b0e14;
-            --card-bg: #151921;
-            --border: #2d333b;
-            --accent: #58a6ff;
-            --success: #238636;
-            --danger: #da3633;
-            --text-main: #adbac7;
-            --text-bright: #ffffff;
-        }
-
-        body {
-            background-color: var(--bg);
-            color: var(--text-main);
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-
-        .header h1 {
-            color: var(--accent);
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            font-size: 28px;
-            margin: 0;
-        }
-
-        .header p {
-            color: #768390;
-            font-size: 14px;
-        }
-
-        .grid-container {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 20px;
-            width: 100%;
-            max-width: 500px;
-        }
-
-        .tool-card {
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 30px 15px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        }
-
-        .tool-card:hover {
-            border-color: var(--accent);
-            transform: translateY(-8px);
-            box-shadow: 0 8px 30px rgba(88, 166, 255, 0.2);
-        }
-
-        .icon-box {
-            font-size: 40px;
-            margin-bottom: 15px;
-            filter: drop-shadow(0 0 5px rgba(88,166,255,0.4));
-        }
-
-        .tool-card h3 {
-            margin: 0;
-            color: var(--text-bright);
-            font-size: 16px;
-        }
-
-        /* Modal Overlay */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(8px);
-            z-index: 999;
-            padding: 15px;
-            box-sizing: border-box;
-            overflow-y: auto;
-        }
-
-        .modal-content {
-            background: var(--card-bg);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            max-width: 480px;
-            margin: 40px auto;
-            padding: 25px;
-            position: relative;
-        }
-
-        textarea, input {
-            width: 100%;
-            background: #0d1117;
-            border: 1px solid var(--border);
-            color: var(--accent);
-            padding: 14px;
-            border-radius: 10px;
-            margin: 12px 0;
-            box-sizing: border-box;
-            font-family: 'Consolas', monospace;
-        }
-
-        .main-btn {
-            width: 100%;
-            padding: 16px;
-            background: var(--success);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-weight: bold;
-            font-size: 16px;
-            cursor: pointer;
-            transition: 0.2s;
-        }
-
-        .main-btn:active { transform: scale(0.98); }
-
-        .close-btn {
-            background: transparent;
-            color: var(--danger);
-            border: 1px solid var(--danger);
-            margin-top: 15px;
-        }
-
-        /* Result Cards */
-        .res-box {
-            background: #0d1117;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 15px;
-            margin-top: 15px;
-            text-align: left;
-        }
+        :root { --bg: #0b0e14; --card: #151921; --border: #2d333b; --accent: #58a6ff; --green: #238636; --red: #da3633; --text: #adbac7; }
+        body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; margin: 0; padding: 15px; display: flex; flex-direction: column; align-items: center; }
+        .header { text-align: center; margin-bottom: 30px; border-bottom: 1px solid var(--border); width: 100%; padding-bottom: 15px; }
+        .header h1 { color: var(--accent); margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; width: 100%; max-width: 500px; }
+        .tool-card { background: var(--card); border: 1px solid var(--border); border-radius: 15px; padding: 25px 10px; text-align: center; cursor: pointer; transition: 0.3s; box-shadow: 0 4px 15px rgba(0,0,0,0.4); }
+        .tool-card:hover { border-color: var(--accent); transform: translateY(-5px); background: #1c2128; }
+        .icon { font-size: 40px; margin-bottom: 10px; display: block; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; padding: 15px; box-sizing: border-box; overflow-y: auto; }
+        .modal-content { background: var(--card); border: 1px solid var(--border); border-radius: 20px; max-width: 450px; margin: 30px auto; padding: 25px; }
+        textarea, input { width: 100%; background: #0d1117; border: 1px solid var(--border); color: #7ee787; padding: 12px; margin: 10px 0; border-radius: 10px; box-sizing: border-box; font-family: monospace; outline: none; }
+        .main-btn { width: 100%; padding: 15px; background: var(--green); color: white; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.2s; }
+        .main-btn:active { transform: scale(0.97); }
+        .close-btn { background: var(--red); margin-top: 10px; }
+        .res-box { background: #0d1117; border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-top: 10px; font-size: 13px; text-align: left; }
+        .badge { background: var(--accent); color: white; padding: 2px 6px; border-radius: 4px; font-size: 11px; float: right; cursor: pointer; }
     </style>
 </head>
 <body>
-
     <div class="header">
         <h1>Deepak Rajput Brand</h1>
-        <p>Premium Cloud Infrastructure V3</p>
+        <p style="font-size: 12px; color: #768390;">Advanced Automation Interface v4.0</p>
     </div>
 
-    <div class="grid-container">
-        <div class="tool-card" onclick="openTool('lock')">
-            <div class="icon-box">🛡️</div>
-            <h3>Stealth Lock</h3>
-        </div>
-        <div class="tool-card" onclick="openTool('extractor')">
-            <div class="icon-box">📡</div>
-            <h3>Pro Extractor</h3>
-        </div>
-        <div class="tool-card" onclick="openTool('checker')">
-            <div class="icon-box">💎</div>
-            <h3>Cookie Checker</h3>
-        </div>
-        <div class="tool-card" onclick="alert('Bhai, message sender ka code bhej add kar dunga!')">
-            <div class="icon-box">✉️</div>
-            <h3>Msg Sender</h3>
-        </div>
+    <div class="grid">
+        <div class="tool-card" onclick="openTool('lock')"><span class="icon">🛡️</span><h3>Stealth Lock</h3></div>
+        <div class="tool-card" onclick="openTool('extractor')"><span class="icon">📡</span><h3>UID Extractor</h3></div>
+        <div class="tool-card" onclick="openTool('checker')"><span class="icon">💎</span><h3>Cookie Check</h3></div>
+        <div class="tool-card" onclick="alert('Coming Soon!')"><span class="icon">✉️</span><h3>Msg Sender</h3></div>
     </div>
 
-    <div id="toolModal" class="modal">
+    <div id="modal" class="modal">
         <div class="modal-content">
-            <h2 id="modalTitle" style="color:var(--accent); margin-top:0;"></h2>
-            <div id="modalBody"></div>
-            <button class="main-btn close-btn" onclick="closeModal()">Back to Dashboard</button>
+            <h2 id="mTitle" style="color:var(--accent); margin-top:0;"></h2>
+            <div id="mBody"></div>
+            <button class="main-btn close-btn" onclick="closeModal()">Close Dashboard</button>
         </div>
     </div>
 
     <script>
-        function closeModal() { document.getElementById('toolModal').style.display = 'none'; }
-        
+        function closeModal() { document.getElementById('modal').style.display = 'none'; }
         async function openTool(type) {
-            const m = document.getElementById('toolModal');
-            const title = document.getElementById('modalTitle');
-            const body = document.getElementById('modalBody');
+            const m = document.getElementById('modal');
+            const title = document.getElementById('mTitle');
+            const body = document.getElementById('mBody');
             m.style.display = 'block';
 
             if(type === 'lock') {
-                title.innerText = 'Stealth Lock System';
-                body.innerHTML = \`
-                    <textarea id="l_ck" placeholder="Paste AppState JSON..."></textarea>
-                    <input type="text" id="l_tid" placeholder="Group/Target UID">
-                    <input type="text" id="l_nk" value="DEEPAK RAJPUT BRAND">
-                    <button class="main-btn" onclick="startLock()">Deploy Lock</button>\`;
-            } 
-            else if(type === 'extractor') {
-                title.innerText = 'Data Extractor PRO';
-                body.innerHTML = \`
-                    <textarea id="e_in" placeholder="Paste Cookies/Tokens (one per line)..."></textarea>
-                    <button class="main-btn" onclick="runExtraction()">Launch Scan</button>
-                    <div id="e_res"></div>\`;
-            }
-            else if(type === 'checker') {
-                title.innerText = 'Diamond Cookie Checker';
-                body.innerHTML = \`
-                    <textarea id="c_in" placeholder="Paste AppStates..."></textarea>
-                    <button class="main-btn" onclick="runCheck()">Verify Status</button>
-                    <div id="c_res"></div>\`;
+                title.innerText = '🛡️ Stealth Nickname Lock';
+                body.innerHTML = \`<textarea id="lck" placeholder="Paste AppState JSON"></textarea><input id="tid" placeholder="Group UID"><input id="nk" value="DEEPAK RAJPUT BRAND"><button class="main-btn" onclick="runLock()">Activate Lock</button>\`;
+            } else if(type === 'extractor') {
+                title.innerText = '📡 PRO UID Extractor';
+                body.innerHTML = \`<textarea id="ein" placeholder="Paste Cookie/AppState"></textarea><button class="main-btn" onclick="runExtract()">Scan Groups</button><div id="eres"></div>\`;
+            } else if(type === 'checker') {
+                title.innerText = '💎 Premium Checker';
+                body.innerHTML = \`<textarea id="cin" placeholder="Paste AppStates (One per line)"></textarea><button class="main-btn" onclick="runCheck()">Verify Status</button><div id="cres"></div>\`;
             }
         }
 
-        async function startLock() {
-            const data = { 
-                cookie: document.getElementById('l_ck').value, 
-                threadID: document.getElementById('l_tid').value, 
-                name: document.getElementById('l_nk').value 
-            };
+        async function runLock() {
+            const data = { ck: document.getElementById('lck').value, tid: document.getElementById('tid').value, nk: document.getElementById('nk').value };
             await fetch('/add-lock', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
-            alert("Lock Initiated Successfully!");
+            alert("Lock Command Sent Successfully!");
+        }
+
+        async function runExtract() {
+            const resDiv = document.getElementById('eres');
+            resDiv.innerHTML = '<p style="color:var(--accent)">Scanning threads...</p>';
+            const res = await fetch('/extract-uid', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ ck: document.getElementById('ein').value })
+            });
+            const data = await res.json();
+            if(data.success) {
+                resDiv.innerHTML = \`<b>👤 \${data.name}</b><br>\`;
+                data.groups.forEach(g => {
+                    resDiv.innerHTML += \`<div class="res-box">\${g.name} <span class="badge" onclick="navigator.clipboard.writeText('\${g.id}');alert('Copied')">\${g.id}</span></div>\`;
+                });
+            } else { resDiv.innerHTML = '<p style="color:var(--red)">Failed to fetch!</p>'; }
         }
 
         async function runCheck() {
-            const lines = document.getElementById('c_in').value.trim().split('\\n').filter(Boolean);
-            const resDiv = document.getElementById('c_res');
-            resDiv.innerHTML = '<p>Checking accounts...</p>';
-            for(let ck of lines) {
-                const res = await fetch('/check-cookie', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ cookie: ck.trim() })
-                });
-                const r = await res.json();
-                resDiv.innerHTML += \`<div class="res-box" style="border-left: 4px solid \${r.status === 'LIVE' ? '#238636' : '#da3633'}">
-                    <b>👤 \${r.name}</b> [\${r.status}]<br><small>UID: \${r.uid}</small></div>\`;
+            const lines = document.getElementById('cin').value.trim().split('\\n').filter(Boolean);
+            const resDiv = document.getElementById('cres');
+            resDiv.innerHTML = '<p>Checking...</p>';
+            for(let c of lines) {
+                const r = await fetch('/check-cookie', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ck: c }) }).then(res => res.json());
+                resDiv.innerHTML += \`<div class="res-box" style="border-left:4px solid \${r.status === 'LIVE' ? 'var(--green)' : 'var(--red)'}"><b>\${r.name}</b> [\${r.status}]</div>\`;
             }
         }
     </script>
 </body>
 </html>`;
 
-// --- Backend Routes ---
+// --- Backend Logic ---
+
 app.get('/', (req, res) => res.send(htmlContent));
 
-app.post('/check-cookie', (req, res) => {
-    const { cookie } = req.body;
-    wiegine.login(cookie, { logLevel: 'silent' }, (err, api) => {
-        if (err || !api) return res.json({ name: "Dead Account", uid: "0", status: "DEAD" });
+app.post('/extract-uid', (req, res) => {
+    const { ck } = req.body;
+    wiegine.login(ck, { logLevel: 'silent' }, (err, api) => {
+        if (err || !api) return res.json({ success: false });
         const uid = api.getCurrentUserID();
-        api.getUserInfo(uid, (e, info) => {
-            res.json({ name: info[uid]?.name || "Active User", uid: uid, status: "LIVE" });
+        api.getThreadList(50, null, ["INBOX"], (err, list) => {
+            const groups = (!err && list) ? list.filter(t => t.isGroup).map(g => ({ name: g.name || "Unnamed Group", id: g.threadID })) : [];
+            api.getUserInfo(uid, (e, info) => {
+                res.json({ success: true, name: info[uid]?.name || "Account OK", groups });
+            });
+        });
+    });
+});
+
+app.post('/check-cookie', (req, res) => {
+    const { ck } = req.body;
+    wiegine.login(ck, { logLevel: 'silent' }, (err, api) => {
+        if (err || !api) return res.json({ name: "Dead", status: "DEAD" });
+        api.getUserInfo(api.getCurrentUserID(), (e, info) => {
+            res.json({ name: info[api.getCurrentUserID()]?.name || "Live", status: "LIVE" });
         });
     });
 });
 
 app.post('/add-lock', (req, res) => {
-    // Lock logic yahan implement hoga (same as before)
+    const { ck, tid, nk } = req.body;
+    wiegine.login(ck, { logLevel: 'silent', forceLogin: true }, (err, api) => {
+        if (err || !api) return;
+        api.setOptions({ listenEvents: true, selfListen: false });
+        
+        // Anti-Change Loop (The Fix)
+        api.listenMqtt((err, event) => {
+            if (event?.logMessageType === "log:user-nickname" && event.threadID === tid) {
+                if (event.logMessageData.nickname !== nk) {
+                    api.changeNickname(nk, tid, event.logMessageData.participant_id, () => {});
+                }
+            }
+        });
+    });
     res.json({ success: true });
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log('DRB PRO MASTER LIVE!'));
+app.listen(PORT, '0.0.0.0', () => console.log('DRB Master v4 Ready!'));
