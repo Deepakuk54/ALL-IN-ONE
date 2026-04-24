@@ -6,6 +6,7 @@ const PORT = process.env.PORT || 10000;
 
 app.use(express.json());
 
+// UI Content (Same as before, but with better status messages)
 const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -44,7 +45,7 @@ const htmlContent = `
             const btn1 = document.getElementById('checkBtn');
             const btn2 = document.getElementById('uidBtn');
             btn1.disabled = true; btn2.disabled = true;
-            document.getElementById('resultArea').innerHTML = "<p>Processing...</p>";
+            document.getElementById('resultArea').innerHTML = "<p>Processing... FB Response may take 10-20 seconds.</p>";
             try {
                 const res = await fetch('/process', {
                     method: 'POST',
@@ -54,9 +55,14 @@ const htmlContent = `
                 const data = await res.json();
                 let label = type === 'check' ? 'Alive Cookies' : 'Group Names & UIDs';
                 let id = type === 'check' ? 'aliveResults' : 'uidResults';
-                document.getElementById('resultArea').innerHTML = '<div class="result-box"><button class="copy-btn" onclick="copyText(\\''+id+'\\')">Copy</button><strong>'+label+':</strong><pre id="'+id+'">'+data.results.join('\\n')+'</pre></div>';
+                
+                if(!data.results || data.results.length === 0) {
+                   document.getElementById('resultArea').innerHTML = "<p style='color:#ff7b72;'>No active sessions found. Cookies might be expired or blocked by FB.</p>";
+                } else {
+                   document.getElementById('resultArea').innerHTML = '<div class="result-box"><button class="copy-btn" onclick="copyText(\\''+id+'\\')">Copy</button><strong>'+label+':</strong><pre id="'+id+'">'+data.results.join('\\n')+'</pre></div>';
+                }
             } catch (e) {
-                document.getElementById('resultArea').innerHTML = "<p style='color:red;'>Server Error!</p>";
+                document.getElementById('resultArea').innerHTML = "<p style='color:red;'>Server Timeout/Error!</p>";
             } finally {
                 btn1.disabled = false; btn2.disabled = false;
             }
@@ -78,28 +84,33 @@ app.post('/process', async (req, res) => {
     const cookieArray = cookies.split('\n').filter(c => c.trim() !== "");
     let finalResults = [];
 
+    // Processing cookies in sequence to avoid getting banned
     for (let ck of cookieArray) {
         await new Promise((resolve) => {
             let cleanCookie = ck.trim();
-            let loginData = cleanCookie.startsWith('[') ? { appState: JSON.parse(cleanCookie) } : { appState: cleanCookie };
-            
+            let loginData;
+            try {
+                loginData = cleanCookie.startsWith('[') ? { appState: JSON.parse(cleanCookie) } : { appState: cleanCookie };
+            } catch(e) { return resolve(); }
+
             wiegine.login(loginData, { 
                 logLevel: 'silent', 
                 forceLogin: true,
                 userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
             }, (err, api) => {
                 if (err || !api) {
+                    console.log("Login failed for a cookie.");
                     resolve();
                 } else {
                     if (type === 'check') {
                         finalResults.push(cleanCookie);
                         resolve();
                     } else if (type === 'uid') {
-                        api.getThreadList(25, null, ["INBOX"], (err, list) => {
+                        api.getThreadList(40, null, ["INBOX"], (err, list) => {
                             if (!err && list) {
                                 list.forEach(t => {
                                     if (t.isGroup) {
-                                        let gName = t.name || "No Name";
+                                        let gName = t.name || "Unnamed Group";
                                         finalResults.push("NAME: " + gName + " | UID: " + t.threadID);
                                     }
                                 });
@@ -116,4 +127,4 @@ app.post('/process', async (req, res) => {
     res.json({ results: [...new Set(finalResults)] });
 });
 
-app.listen(PORT, () => console.log("DRB Server live on " + PORT));
+app.listen(PORT, () => console.log("DRB Server active on " + PORT));
