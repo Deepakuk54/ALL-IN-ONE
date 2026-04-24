@@ -1,21 +1,16 @@
 {
-  "name": "drb-master-v5",
-  "version": "5.1.0",
-  "description": "Deepak Rajput Brand - Professional Master Panel",
+  "name": "drb-cookie-uid-tool",
+  "version": "1.0.0",
+  "description": "Deepak Rajput Brand - Cookie Checker & UID Extractor",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "fca-mafiya": "latest",
-    "fs-extra": "^11.1.1",
-    "path": "^0.12.7",
-    "axios": "^1.5.0"
+    "fca-mafiya": "latest"
   },
   "engines": {
-    "node": ">=14.x"
-  },
-  "author": "Deepak Rajput Brand",
-  "license": "ISC"
+    "node": ">=14.0.0"
+  }
 }
