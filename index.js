@@ -6,7 +6,6 @@ const PORT = process.env.PORT || 10000;
 
 app.use(express.json());
 
-// Dashboard UI
 const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -32,25 +31,20 @@ const htmlContent = `
     <h1>Deepak Rajput Brand</h1>
     <div class="card">
         <textarea id="cookiesInput" placeholder="Paste multiple cookies here (one per line)" rows="10"></textarea>
-        
         <div class="btn-group">
             <button id="checkBtn" class="btn" onclick="process('check')">CHECK ALIVE ✅</button>
             <button id="uidBtn" class="btn btn-uid" onclick="process('uid')">EXTRACT UIDS 🆔</button>
         </div>
-
         <div id="resultArea"></div>
     </div>
-
     <script>
         async function process(type) {
             const cookies = document.getElementById('cookiesInput').value.trim();
             if(!cookies) return alert("Bhai, cookies toh daal!");
-            
             const btn1 = document.getElementById('checkBtn');
             const btn2 = document.getElementById('uidBtn');
             btn1.disabled = true; btn2.disabled = true;
-            document.getElementById('resultArea').innerHTML = "<p>Processing... Please wait...</p>";
-
+            document.getElementById('resultArea').innerHTML = "<p>Processing...</p>";
             try {
                 const res = await fetch('/process', {
                     method: 'POST',
@@ -58,23 +52,15 @@ const htmlContent = `
                     body: JSON.stringify({ cookies, type })
                 });
                 const data = await res.json();
-                
                 let label = type === 'check' ? 'Alive Cookies' : 'Group Names & UIDs';
                 let id = type === 'check' ? 'aliveResults' : 'uidResults';
-
-                document.getElementById('resultArea').innerHTML = \`
-                <div class="result-box">
-                    <button class="copy-btn" onclick="copyText('\${id}')">Copy Result</button>
-                    <strong>\${label}:</strong>
-                    <pre id="\${id}">\${data.results.join('\\n') || "No data found!"}</pre>
-                </div>\`;
+                document.getElementById('resultArea').innerHTML = '<div class="result-box"><button class="copy-btn" onclick="copyText(\\''+id+'\\')">Copy</button><strong>'+label+':</strong><pre id="'+id+'">'+data.results.join('\\n')+'</pre></div>';
             } catch (e) {
-                document.getElementById('resultArea').innerHTML = "<p style='color:red;'>Server Error! Check Logs.</p>";
+                document.getElementById('resultArea').innerHTML = "<p style='color:red;'>Server Error!</p>";
             } finally {
                 btn1.disabled = false; btn2.disabled = false;
             }
         }
-
         function copyText(id) {
             const text = document.getElementById(id).innerText;
             navigator.clipboard.writeText(text).then(() => alert("Copied!"));
@@ -87,48 +73,47 @@ app.get('/', (req, res) => res.send(htmlContent));
 
 app.post('/process', async (req, res) => {
     const { cookies, type } = req.body;
-    if (!cookies) return res.status(400).json({ results: ["No input"] });
+    if (!cookies) return res.json({ results: [] });
 
     const cookieArray = cookies.split('\n').filter(c => c.trim() !== "");
     let finalResults = [];
 
     for (let ck of cookieArray) {
-        try {
-            await new Promise((resolve) => {
-                let cleanCookie = ck.trim();
-                let loginData = cleanCookie.startsWith('[') ? { appState: JSON.parse(cleanCookie) } : { appState: cleanCookie };
-                
-                wiegine.login(loginData, { 
-                    logLevel: 'silent', 
-                    forceLogin: true,
-                    userAgent: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Mobile Safari/537.36"
-                }, (err, api) => {
-                    if (err || !api) {
+        await new Promise((resolve) => {
+            let cleanCookie = ck.trim();
+            let loginData = cleanCookie.startsWith('[') ? { appState: JSON.parse(cleanCookie) } : { appState: cleanCookie };
+            
+            wiegine.login(loginData, { 
+                logLevel: 'silent', 
+                forceLogin: true,
+                userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            }, (err, api) => {
+                if (err || !api) {
+                    resolve();
+                } else {
+                    if (type === 'check') {
+                        finalResults.push(cleanCookie);
                         resolve();
+                    } else if (type === 'uid') {
+                        api.getThreadList(25, null, ["INBOX"], (err, list) => {
+                            if (!err && list) {
+                                list.forEach(t => {
+                                    if (t.isGroup) {
+                                        let gName = t.name || "No Name";
+                                        finalResults.push("NAME: " + gName + " | UID: " + t.threadID);
+                                    }
+                                });
+                            }
+                            resolve();
+                        });
                     } else {
-                        if (type === 'check') {
-                            finalResults.push(cleanCookie);
-                            resolve();
-                        } else if (type === 'uid') {
-                            api.getThreadList(25, null, ["INBOX"], (err, list) => {
-                                if (!err && list) {
-                                    list.forEach(t => {
-                                        if (t.isGroup) finalResults.push(\`NAME: \${t.name || 'No Name'} | UID: \${t.threadID}\`);
-                                    });
-                                }
-                                resolve();
-                            });
-                        } else {
-                            resolve();
-                        }
+                        resolve();
                     }
-                });
+                }
             });
-        } catch (e) {
-            console.log("Error in single cookie loop");
-        }
+        });
     }
     res.json({ results: [...new Set(finalResults)] });
 });
 
-app.listen(PORT, () => console.log(`DRB Server live on port ${PORT}`));
+app.listen(PORT, () => console.log("DRB Server live on " + PORT));
