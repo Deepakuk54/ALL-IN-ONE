@@ -13,7 +13,7 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Deepak Rajput Brand - Pro Extractor</title>
+            <title>Deepak Rajput Brand - Pro Cookies Checker</title>
             <style>
                 body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; padding: 20px; display: flex; flex-direction: column; align-items: center; }
                 .container { width: 100%; max-width: 650px; background: #161b22; padding: 30px; border-radius: 15px; border: 1px solid #30363d; box-shadow: 0 15px 35px rgba(0,0,0,0.6); }
@@ -22,71 +22,85 @@ app.get('/', (req, res) => {
                 .mode-selector { display: flex; gap: 10px; margin-bottom: 20px; }
                 .mode-btn { flex: 1; padding: 12px; border: 1px solid #30363d; background: #21262d; color: white; cursor: pointer; border-radius: 8px; font-weight: bold; transition: 0.3s; display: flex; align-items: center; justify-content: center; gap: 8px; }
                 .mode-btn.active { background: #1f6feb; border-color: #58a6ff; }
-                textarea { width: 100%; height: 130px; background: #0d1117; color: #7ee787; border: 1px solid #30363d; border-radius: 8px; padding: 12px; font-family: monospace; box-sizing: border-box; margin-bottom: 15px; }
-                .main-btn { width: 100%; padding: 15px; background: #238636; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; }
+                textarea { width: 100%; height: 150px; background: #0d1117; color: #7ee787; border: 1px solid #30363d; border-radius: 8px; padding: 12px; font-family: monospace; box-sizing: border-box; margin-bottom: 15px; }
+                .main-btn { width: 100%; padding: 15px; background: #238636; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; width: 100%; }
                 #status { margin-top: 20px; text-align: center; color: #ffa657; font-weight: 500; }
-                .account-card { background: #010409; border: 1px solid #30363d; border-radius: 10px; padding: 15px; margin-top: 20px; border-left: 5px solid #58a6ff; }
-                .group-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #21262d; font-size: 14px; }
-                .uid-badge { background: #1f6feb; color: white; padding: 4px 8px; border-radius: 5px; font-family: monospace; cursor: pointer; }
+                .account-card { background: #010409; border: 1px solid #30363d; border-radius: 10px; padding: 15px; margin-top: 15px; border-left: 5px solid #58a6ff; position: relative; }
+                .copy-actions { margin-top: 10px; display: flex; gap: 10px; }
+                .copy-btn { background: #30363d; color: #c9d1d9; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 12px; }
+                .copy-btn:hover { background: #58a6ff; color: white; }
+                .group-item { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #21262d; font-size: 13px; }
+                .uid-badge { background: #1f6feb; color: white; padding: 2px 6px; border-radius: 4px; font-family: monospace; cursor: pointer; font-size: 11px; }
             </style>
         </head>
         <body>
             <div class="container">
                 <h1>Deepak Rajput Brand</h1>
-                <div class="brand-sub">Premium Multi-Mode Extractor</div>
+                <div class="brand-sub">Premium Multi-Account Cookies Manager</div>
+                
                 <div class="mode-selector">
-                    <button id="cookieBtn" class="mode-btn active" onclick="setMode('cookie')">
-                        <span>🍪</span> COOKIES CHECKER
-                    </button>
-                    <button id="uidBtn" class="mode-btn" onclick="setMode('cookie')">
-                        <span>🆔</span> UID EXTRACTOR
-                    </button>
+                    <button class="mode-btn active"><span>🍪</span> COOKIES CHECKER</button>
+                    <button class="mode-btn active"><span>🆔</span> UID EXTRACTOR</button>
                 </div>
-                <textarea id="userInput" placeholder="Paste data here..."></textarea>
-                <button class="main-btn" onclick="startExtraction()">START EXTRACTION</button>
-                <div id="status">Ready...</div>
+
+                <textarea id="userInput" placeholder="Paste multiple cookies here (one per line)..."></textarea>
+                <button class="main-btn" onclick="startExtraction()">START PROCESS</button>
+                
+                <div id="status">Ready to check...</div>
                 <div id="results"></div>
             </div>
+
             <script>
-                let currentMode = 'cookie';
-                function setMode(mode) {
-                    currentMode = mode;
-                    // Dono buttons cookies par hi kaam karenge jaisa aapne kaha
-                    document.getElementById('cookieBtn').classList.toggle('active', true);
-                    document.getElementById('uidBtn').classList.toggle('active', true);
-                }
                 async function startExtraction() {
-                    const data = document.getElementById('userInput').value.trim().split('\\n').filter(Boolean);
+                    const inputData = document.getElementById('userInput').value.trim().split('\\n').filter(Boolean);
                     const resultsDiv = document.getElementById('results');
                     const status = document.getElementById('status');
                     resultsDiv.innerHTML = '';
-                    const endpoint = '/extract-cookie';
-                    for(let i=0; i < data.length; i++) {
-                        status.innerText = "Processing " + (i+1) + "/" + data.length;
+
+                    for(let i=0; i < inputData.length; i++) {
+                        const currentCookie = inputData[i].trim();
+                        status.innerText = "Checking: " + (i+1) + " / " + inputData.length;
+                        
                         try {
-                            const res = await fetch(endpoint, {
+                            const res = await fetch('/extract-cookie', {
                                 method: 'POST',
                                 headers: {'Content-Type': 'application/json'},
-                                body: JSON.stringify({ input: data[i].trim() })
+                                body: JSON.stringify({ input: currentCookie })
                             });
                             const result = await res.json();
-                            let html = \`<div class="account-card">
-                                <b>👤 \${result.name}</b><br>
-                                <small style="color:#8b949e">ID UID: \${result.uid}</small>\`;
+                            
+                            let statusColor = result.uid === "---" ? "#f85149" : "#238636";
+                            let cardHtml = \`
+                                <div class="account-card" style="border-left-color: \${statusColor}">
+                                    <b style="color: \${statusColor}">\${result.uid === "---" ? "❌ DEAD" : "✅ ALIVE"}</b><br>
+                                    <b>👤 Name: \${result.name}</b><br>
+                                    <span>🆔 UID: \${result.uid}</span>
+                                    
+                                    <div class="copy-actions">
+                                        \${result.uid !== "---" ? \`<button class="copy-btn" onclick="copyText('\${result.uid}')">Copy UID</button>\` : ''}
+                                        <button class="copy-btn" onclick="copyText(\\\`\${currentCookie}\\\`)">Copy Cookie</button>
+                                    </div>
+                            \`;
+
                             if(result.groups && result.groups.length > 0) {
+                                cardHtml += '<div style="margin-top:10px; font-size:12px; color:#8b949e;">Groups:</div>';
                                 result.groups.forEach(g => {
-                                    html += \`<div class="group-item"><span>\${g.name}</span><span class="uid-badge" onclick="copyUID('\${g.id}')">\${g.id}</span></div>\`;
+                                    cardHtml += \`<div class="group-item"><span>\${g.name}</span><span class="uid-badge" onclick="copyText('\${g.id}')">\${g.id}</span></div>\`;
                                 });
-                            } else { html += '<p style="color:red">No Groups Found</p>'; }
-                            html += '</div>';
-                            resultsDiv.innerHTML += html;
-                        } catch(e) {}
+                            }
+                            
+                            cardHtml += '</div>';
+                            resultsDiv.innerHTML += cardHtml;
+                        } catch(e) {
+                            console.error(e);
+                        }
                     }
-                    status.innerText = "✅ Done!";
+                    status.innerText = "✅ All Cookies Processed!";
                 }
-                function copyUID(uid) {
-                    navigator.clipboard.writeText(uid);
-                    alert("Copied: " + uid);
+
+                function copyText(text) {
+                    navigator.clipboard.writeText(text);
+                    alert("Copied to clipboard!");
                 }
             </script>
         </body>
@@ -97,19 +111,19 @@ app.get('/', (req, res) => {
 app.post('/extract-cookie', (req, res) => {
     const { input } = req.body;
     wiegine.login(input, { logLevel: 'silent' }, (err, api) => {
-        if (err || !api) return res.json({ name: "Dead Cookie", uid: "---", groups: [] });
+        if (err || !api) return res.json({ name: "Invalid / Expired", uid: "---", groups: [] });
         
         const uid = api.getCurrentUserID();
         
-        api.getThreadList(100, null, ["INBOX"], (err, list) => {
+        api.getThreadList(50, null, ["INBOX"], (err, list) => {
             const groups = (!err && list) ? list.filter(t => t.isGroup).map(g => ({ name: g.name || "Group", id: g.threadID })) : [];
             
             api.getUserInfo(uid, (e, info) => {
-                const name = (!e && info[uid]) ? info[uid].name : "Account OK";
+                const name = (!e && info[uid]) ? info[uid].name : "Facebook User";
                 res.json({ name: name, uid: uid, groups: groups });
             });
         });
     });
 });
 
-app.listen(PORT, '0.0.0.0', () => console.log('Live!'));
+app.listen(PORT, '0.0.0.0', () => console.log('Live on port ' + PORT));
